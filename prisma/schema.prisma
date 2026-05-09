@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  BUYER
+  SELLER
+  ADMIN
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  USAGE
+  REFUND
+  ESCROW_LOCK
+  ESCROW_RELEASE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(BUYER)
+  balanceUsd   Decimal  @default(0) @db.Decimal(12, 6)
+  balanceCredits Decimal @default(0) @db.Decimal(12, 6)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  apiKeys      ApiKey[]
+  listings     Listing[]
+  transactions Transaction[]
+  usageLogs    UsageLog[]
+
+  @@index([email])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  key        String    @unique
+  name       String
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageLogs UsageLog[]
+
+  @@index([key])
+  @@index([userId])
+}
+
+model AiModel {
+  id                    String   @id @default(cuid())
+  slug                  String   @unique
+  name                  String
+  provider              String
+  inputPricePerMillion  Decimal  @db.Decimal(10, 4)
+  outputPricePerMillion Decimal  @db.Decimal(10, 4)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+
+  listings  Listing[]
+  usageLogs UsageLog[]
+
+  @@index([slug])
+}
+
+model Listing {
+  id                    String    @id @default(cuid())
+  sellerId              String
+  modelId               String
+  endpointUrl           String
+  inputPricePerMillion  Decimal   @db.Decimal(10, 4)
+  outputPricePerMillion Decimal   @db.Decimal(10, 4)
+  maxConcurrency        Int       @default(10)
+  currentConcurrency    Int       @default(0)
+  isActive              Boolean   @default(true)
+  isVerified            Boolean   @default(false)
+  lastHealthCheck       DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  seller    User      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  model     AiModel   @relation(fields: [modelId], references: [id])
+  usageLogs UsageLog[]
+
+  @@index([sellerId])
+  @@index([modelId])
+  @@index([isActive, isVerified])
+}
+
+model Transaction {
+  id            String          @id @default(cuid())
+  userId        String
+  type          TransactionType
+  amount        Decimal         @db.Decimal(12, 6)
+  balanceBefore Decimal         @db.Decimal(12, 6)
+  balanceAfter  Decimal         @db.Decimal(12, 6)
+  description   String
+  metadata      Json?
+  createdAt     DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, createdAt])
+}
+
+model UsageLog {
+  id           String   @id @default(cuid())
+  userId       String
+  apiKeyId     String
+  listingId    String?
+  modelId      String
+  inputTokens  Int
+  outputTokens Int
+  totalCost    Decimal  @db.Decimal(12, 6)
+  latencyMs    Int
+  statusCode   Int
+  createdAt    DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey  ApiKey   @relation(fields: [apiKeyId], references: [id])
+  listing Listing? @relation(fields: [listingId], references: [id])
+  model   AiModel  @relation(fields: [modelId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([apiKeyId])
+  @@index([modelId])
+}
